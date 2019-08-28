@@ -5,107 +5,48 @@ last_modified:2019-08-04
 version:1.0 
 improtion:遍历文件夹，传入要写入的hive表名
 """
-from pyspark import SparkConf,SparkContext
-import os,sys,time
+import os,sys
 import xlrd
 import xlwt
 import shutil
 import csv
 import datetime
-from pyspark.sql import SparkSession
-from pyspark.sql.types import *
-import pandas as pd
-import numpy as np
+import glob
 import codecs
 import re
+from config import *
 xlrd.Book.encoding = "utf-8"
-dirname, filename = os.path.split(os.path.abspath(sys.argv[0]))
-PG_DRIVER = 'org.postgresql.Driver'
+# dirname, filename = os.path.split(os.path.abspath(sys.argv[0]))
+# PG_DRIVER = 'org.postgresql.Driver'
 
-class spark_etl_2_hive(object):
-    """ 
-    遍历工程下的所有文件，不含文件夹，将Excel文件转为CSV，并将CSV文件导入hive中
-    导入数据库中的同一个表
+class file_process(object):
     """
-    def __init__(self, dir_name, target_table):
-        self.dir_name = dir_name
-        self.target_table = target_table
-        self.csv_dir = os.path.join(self.dir_name, 'csv')
-        # if os.path.exists():
-        if not os.path.exists(self.csv_dir):
-            os.makedirs(self.csv_dir)
-        self.run()
-    def run(self,):
-        for file_name in os.scandir(self.dir_name):
-            if file_name.name.endswith('.xlsx') or file_name.name.endswith('.xls'):
-                self.excel_2_csv(os.path.join(self.dir_name, file_name))
-            elif file_name.endswith('.csv'):
+    将Excel中的每一个sheet转为csv文件，并将csv文件弄到专门的文件夹下
+    """
+    def __init__(self, dir_name):
+        """
+        遍历该文件夹，考虑文件夹下子文件夹
+        入参:要导入数据所在的文件夹
+        """
+        self.csv_dir = os.path.join(dir_name, 'csv')
+        # self.dir_name = dir_name
+        # 如果不存在csv目录则创建
+        os.makedirs(self.csv_dir, exist_ok=True)
+        # self.run(dir_name)
+    @get_cost_time_log(level='info')
+    def run(self, dir_name):
+        """
+        遍历文件夹下所有文件，如果是Excel则转为csv，如果是csv直接移动到指定的文件夹
+        """
+        for entry in os.scandir(dir_name):
+            if entry.is_dir() and entry.name!='csv':
+                self.run(os.path.join(dir_name, entry.name))
+            if entry.name.endswith('.xlsx') or entry.name.endswith('.xls'):
+                self.excel_2_csv(file_name=os.path.join(dir_name, entry.name))
+            elif entry.name.endswith('.csv'):
                 # 移动CSV文件到指定目录
-                shutil.move(os.path.join(self.dir_name, file_name), os.path.join(self.csv_dir, file_name))
-                # self.csv_2_hive(file_name)
-        # for file_name in os.scandir(self.csv_dir):
-        #     # 对这个文件夹下所有的CSV导入库中
-        #     self.csv_2_hive(os.path.join(self.csv_dir, file_name.name))
-    def excel_2_csv(self, file_name, start_row=-1):
-        workbook = xlrd.open_workbook(file_name)
-        all_worksheets = workbook.sheet_names()
-        dir_name,file_name = os.path.split(file_name)
-        for worksheet_name in all_worksheets:
-                worksheet = workbook.sheet_by_name(worksheet_name)
-                # with open(os.path.join(self.csv_dir,worksheet_name+'.xlsx'), 'w', encoding='utf_8_sig' ,newline='') as your_csv_file:
-                # for row in range(worksheet.nrows):
-                #     for col in range(worksheet.ncols):
-                # codecs.open('temp.csv', 'w', 'utf_8_sig')
-                with open(os.path.join(self.csv_dir,worksheet_name+'.csv'), 'w', encoding='utf-8' , newline='') as your_csv_file:
-                    csv_writer = csv.writer(your_csv_file)
-                    for rownum in range(worksheet.nrows):
-                            row_container = [re.sub('[,，]',' ', str(entry)) for idx, entry in enumerate(worksheet.row_values(rownum)) if idx>start_row]
-                            print(row_container)
-                            if row_container:
-                                csv_writer.writerow(row_container)
-    def csv_2_hive(self, file_name, mode='append'):
-        df = spark.read.csv(file_name, header=True, inferSchema=False)
-        # target_table = 'fresh_ods.ods_{0}'.format(file_name.lower())
-        start = time.time()
-        print('starting 写入{0}.......................................'.format(file_name))
-        df.write.saveAsTable(self.target_table, mode = mode)
-        print("cost {0} seconds".format(time.time()-start))
-        print('end 写入{0}............................................'.format(file_name))
-
-class spark_etl_2_pg(object):
-    """ 
-    遍历工程下的所有文件，不含文件夹，将Excel文件转为CSV，并将CSV文件导入hive中
-    导入数据库中的同一个表
-    """
-    def __init__(self, dir_name, target_table, driver, db_url):
-        spark_conf = SparkConf()
-        spark_conf.set('driver-memory', '3g')
-        spark_conf.set('executor-memory', '8g')
-        spark_conf.set("spark.sql.shuffle.partitions", '1')
-        spark_conf.set("spark.jars",os.path.join(dir_name,'spark-excel_2.11-0.8.3.jar'))
-        spark_conf.set("spark.driver.extraClassPath", dir_name+"\postgresql-42.1.1.jar")
-        # spark_conf.set("spark.jars",os.path.join(dirname,'spark-hadoopoffice-ds_2.11-1.3.1.jar'))
-        self.spark = SparkSession.builder.appName("Pyspark-excel").master('local[*]').config(conf=spark_conf).getOrCreate()
-        self.dir_name = dir_name
-        self.target_table = target_table
-        self.driver = driver
-        self.db_url = db_url
-        # self.spark = spark
-        self.csv_dir = os.path.join(self.dir_name, 'csv')
-        # if os.path.exists():
-        if not os.path.exists(self.csv_dir):
-            os.makedirs(self.csv_dir)
-        self.run()
-    def run(self,):
-        for file_name in os.scandir(self.dir_name):
-            if file_name.name.endswith('.xlsx') or file_name.name.endswith('.xls'):
-                self.excel_2_csv(os.path.join(self.dir_name, file_name), start_row=0)
-            elif file_name.name.endswith('.csv'):
-                shutil.move(os.path.join(self.dir_name, file_name.name), os.path.join(self.csv_dir, file_name.name))
-        # for file_name in os.scandir(self.csv_dir):
-        #     # 对这个文件夹下所有的CSV导入库中
-        #     self.excel_2_pg(os.path.join(self.csv_dir, file_name.name))
-    def excel_2_csv(self, file_name, start_row=0, start_column=1, time_col=[1], skip_sheet = []):
+                shutil.move(os.path.join(dir_name, entry.name), os.path.join(self.csv_dir, entry.name))
+    def excel_2_csv(self, file_name, start_row=excel_config.START_ROW, start_column=excel_config.START_COLUMN, time_col=excel_config.TIME_COLUMN, skip_sheet=excel_config.SKIP_SHEET):
         """
         能解决Excel中时间类型
         传入参数：
@@ -119,49 +60,300 @@ class spark_etl_2_pg(object):
         workbook = xlrd.open_workbook(file_name)
         all_worksheets = workbook.sheet_names()
         dir_name,file_name = os.path.split(file_name)
+        # 遍历所有sheet页
         for worksheet_name in all_worksheets:
+            # 如果sheet页是跳过的sheet页，则继续循环
             if worksheet_name in skip_sheet:
                 continue
+            # print(worksheet_name)
             worksheet = workbook.sheet_by_name(worksheet_name)
-            with open(os.path.join(self.csv_dir,file_name[:-5]+'_'+worksheet_name+'.csv'), 'w', encoding='utf-8' ,newline='') as your_csv_file:
-                csv_writer = csv.writer(your_csv_file)
+            with open(os.path.join(self.csv_dir,os.path.splitext(file_name)[0]+'_'+worksheet_name+'.csv'), 'w', encoding='utf-8' ,newline='') as csv_file:
+                csv_writer = csv.writer(csv_file)
+                # 遍历sheet页中每一个元素，从指定行列开始，并对时间列就行处理
                 for row in range(start_row, worksheet.nrows):
                     row_container=[]
-                    # for idx, entry in enumerate(worksheet.row_values(rownum)):
                     for col in range(start_column, worksheet.ncols):
                         entry = worksheet.cell(row,col).value
+                        # print(entry)
                         # if col>start_column:
                         if row==0 or col not in time_col:
-                            row_container.append(re.sub('\s+','', str(entry)))
+                            # 剔除每一个元素中多余的空格，主要是有些元素中有换行符等，导致生成的csv有问题
+                            row_container.append(re.sub(r'\s+','', str(entry)))
                         else:
+                            # 处理时间类型的列
                             row_container.append(datetime.datetime(*xlrd.xldate_as_tuple(entry, workbook.datemode)))
-                    # row_container = [re.sub('\s+','', str(entry)) if idx>1 else datetime.datetime(*xlrd.xldate_as_tuple(entry, workbook.datemode)) for idx, entry in enumerate(worksheet.row_values(rownum)) if idx>start_row]
-                    # datetime.datetime(*xlrd.xldate_as_tuple(a1, book.datemode))
                     if row_container:
+                        # 跳过空行
                         csv_writer.writerow(row_container)
 
-    def excel_2_pg(self, file_name, mode='append'):
-        df = self.spark.read.csv(file_name, header=True, inferSchema=False)
-        start = time.time()
-        print('starting 写入{0}.......................................'.format(file_name))
-        df.write.jdbc(mode=mode, url=self.db_url, table=self.target_table, properties={"driver": self.driver})
-        print("cost {0} seconds".format(time.time()-start))
-        print('end 写入{0}............................................'.format(file_name))
 
+class csv_or_excel_2_pg(file_process):
+    """ 
+    遍历工程下的所有文件，不含文件夹，将Excel文件转为CSV，并将CSV文件导入hive中
+    导入数据库中的同一个表
+    """
+    def __init__(self, dir_name, target_table):
+        super(csv_or_excel_2_pg, self).__init__(dir_name)
+        super().run(dir_name)
+        self.spark = SparkInit().get_spark()
+        # self.dir_name = dir_name
+        self.target_table = target_table
+        self.run()
+
+    @get_cost_time_log(level='info')
+    def run(self,):
+        for file_name in os.scandir(self.csv_dir):
+            # 对这个文件夹下所有的CSV导入库中
+            self.csv_2_pg(file_name=os.path.join(self.csv_dir, file_name.name),target_table=self.target_table)
+
+    @get_cost_time_log(level='info')
+    def csv_2_pg(self, file_name, target_table, mode='append', header=csv_config.HEADER, inferSchema=csv_config.INFERSCHEMA):
+        """
+        默认是有标题头的,csv导入pg
+        """
+        df = self.spark.read.csv(file_name, header=header, inferSchema=inferSchema)
+        db_url = pg_config.get_pg_conn()
+        df.write.jdbc(mode=mode, url=db_url, table=self.target_table, properties={"driver": pg_config.PG_DRIVER})
+
+class csv_or_excel_2_hive(file_process):
+    """ 
+    遍历工程下的所有文件，不含文件夹，将Excel文件转为CSV，并将CSV文件导入hive中
+    导入数据库中的同一个表
+    """
+    def __init__(self, dir_name, target_table):
+        super(csv_or_excel_2_hive, self).__init__(dir_name)
+        super().run(dir_name)
+        self.spark = SparkInit().get_spark()
+        # self.dir_name = dir_name
+        self.target_table = target_table
+        self.run()
+    def run(self,):
+        for file_name in os.scandir(self.csv_dir):
+            # 对这个文件夹下所有的CSV导入库中
+            self.csv_2_hive(file_name=os.path.join(self.csv_dir, file_name.name), target_table=self.target_table)
+
+    def csv_2_hive(self, file_name, target_table, mode='append', header=csv_config.HEADER, inferSchema=csv_config.INFERSCHEMA):
+        """
+        默认是有标题头的,csv中应该是有字段名，如果没有则应该替换
+        """
+        df = self.spark.read.csv(file_name, header=header, inferSchema=inferSchema)
+        df.write.saveAsTable(target_table, mode = mode)
+
+
+class other_2_hive(object):
+    def __init__(self, ):
+        self.spark = SparkInit().get_spark()
+    @get_cost_time_log(level='info')
+    def pg_write_hive(self, query, target_table, mode='append'):
+        """
+        source_table 可以带schema表名，也可以是一段SQL得到的临时表比如说仅选择某一天的数据
+        例如：ods.ods_sale,select * from ods.ods_sale where sale_date='2019-01-01'
+        target_table 带schema的表名
+        mode 写到hive中表的方式，默认是追加
+        """
+        db_url = pg_config.get_pg_conn()
+        df = self.spark.read.format("jdbc").options(url=db_url, dbtable=query, properties={"driver": pg_config.PG_DRIVER}).load()
+        # print(df.show())
+        df.write.saveAsTable(target_table, mode = mode)
+    
+    @get_cost_time_log(level='info')
+    def sqlserver_write_hive(self, query, target_table, mode='append'):
+        """
+        source_table 可以带schema表名，也可以是一段SQL得到的临时表比如说仅选择某一天的数据
+        例如：ods.ods_sale,select * from ods.ods_sale where sale_date='2019-01-01'
+        target_table 带schema的表名
+        mode 写到hive中表的方式，默认是追加
+        """
+        # source_table = "(SELECT 题目, 答案, 选项 FROM fds.ds) tmp"
+        db_url = sqlserver_config.get_sqlserver_conn()
+        df = self.spark.read.format("jdbc").options(url=db_url, dbtable=query, properties={"driver": sqlserver_config.SQLSERVER_DRIVER}).load()
+        # print(df.show())
+        df.write.saveAsTable(target_table, mode = mode)
+    
+    @get_cost_time_log(level='info')
+    def oracle_write_hive(self, query, target_table, mode='append'):
+        """
+        未测试
+        source_table 可以带schema表名，也可以是一段SQL得到的临时表比如说仅选择某一天的数据
+        例如：ods.ods_sale,select * from ods.ods_sale where sale_date='2019-01-01'
+        target_table 带schema的表名
+        mode 写到hive中表的方式，默认是追加
+        """
+        db_con = oracle_config.ORACLE_CONN
+        df = self.spark.read.format("jdbc")\
+            .option("url", """jdbc:oracle:thin:@//{DB_HOST}:{DB_PORT}/{DB_NAME}""".format(db_con['DB_HOST'],db_con['DB_PORT'], db_con['DB_NAME']))\
+            .option("dbtable", query)\
+            .option("user", db_con['DB_USER'])\
+            .option("password", db_con['DB_PASSWORD']) \
+            .option("driver", oracle_config.ORACLE_DRIVER)\
+            .load()
+        # print(df.show())
+        df.write.saveAsTable(target_table, mode = mode)
+
+    @get_cost_time_log(level='info')
+    def hana_write_hive(self, query, target_table, mode='append'):
+        """
+        未测试
+        source_table 可以带schema表名，也可以是一段SQL得到的临时表比如说仅选择某一天的数据
+        例如：ods.ods_sale,select * from ods.ods_sale where sale_date='2019-01-01'
+        target_table 带schema的表名
+        mode 写到hive中表的方式，默认是追加
+        """
+        db_con = hana_config.HANA_CONN
+        df= self.spark.read.jdbc(url="jdbc:sap:{DB_HOST}:{DB_PORT}/{DB_NAME}".format(db_con['DB_HOST'],db_con['DB_PORT'], db_con['DB_NAME']),\
+                dbtable=query, properties={"user": db_con['DB_USER'], "password": db_con['DB_PASSWORD']})
+        # print(df.show())
+        df.write.saveAsTable(target_table, mode = mode)
+    
+    @get_cost_time_log(level='info')
+    def mysql_write_hive(self, query, target_table, mode='append'):
+        """
+        未测试
+        source_table 可以带schema表名，也可以是一段SQL得到的临时表比如说仅选择某一天的数据
+        例如：ods.ods_sale,select * from ods.ods_sale where sale_date='2019-01-01'
+        target_table 带schema的表名
+        mode 写到hive中表的方式，默认是追加
+        例子：
+        .option("driver", "com.mysql.jdbc.Driver")
+        .option("url", "jdbc:mysql://ip:3306")
+        .option("dbtable", "db.user_test")
+        .option("user", "test")
+        .option("password", "123456")
+        .option("fetchsize", "3")
+        .load()
+        """
+        db_con = mysql_config.MYSQL_CONN
+        df= self.spark.read.spark.read.format("jdbc")\
+                .option("driver", mysql_config.MYSQL_DRIVER)\
+                .option("url", "jdbc:mysql://{DB_HOST}:{DB_PORT}".format(db_con['DB_HOST'],db_con['DB_PORT']))\
+                .option("dbtable", query)\
+                .option("user", db_con['DB_USER'])\
+                .option("password", db_con['DB_PASSWORD'])\
+                .load()
+        # print(df.show())
+        df.write.saveAsTable(target_table, mode = mode)
+
+class hive_2_other(object):
+    def __init__(self, ):
+        self.spark = SparkInit().get_spark()
+    
+    @get_cost_time_log(level='info')
+    def hive_write_pg(self, query, target_table, mode='append'):
+        """
+        query 基于spark SQL获取临时表，简单的比如说查询某个表某天或者全部数据，或者复杂点的，多个表进行关联得到的临时表
+        例如：select * from ods.ods_sale where sale_date='2019-01-01' 或者 select * from ods.ods_sale
+        target_table 要插入的带schema的表名
+        mode 写到pg中表的方式，默认是追加
+        """
+        df = self.spark.sql(query)
+        # print(df.show())
+        db_conn = pg_config.PG_CONN
+        target_url = "jdbc:postgresql://{DB_HOST}:{DB_PORT}/{DB_NAME}".format(DB_HOST=db_conn['DB_HOST'], DB_PORT=db_conn['DB_PORT'], DB_NAME=db_conn['DB_NAME'])
+        properties = {
+            "user": db_conn['DB_USER'],
+            "password": db_conn['DB_PASSWORD'],
+            "driver": pg_config.PG_DRIVER
+        }
+        df.write.jdbc(url=target_url, table=target_table, mode=mode, properties=properties)
+
+    @get_cost_time_log(level='info')
+    def hive_write_sqlserver(self, query, target_table, mode='append'):
+        """
+        query 基于spark SQL获取临时表，简单的比如说查询某个表某天或者全部数据，或者复杂点的，多个表进行关联得到的临时表
+        例如：select * from ods.ods_sale where sale_date='2019-01-01' 或者 select * from ods.ods_sale
+        target_table 要插入的带schema的表名
+        mode 写到sqlserver中表的方式，默认是追加
+        """
+        df = self.spark.sql(query)
+        # print(df.show())
+        db_conn = sqlserver_config.SQLSERVER_CONN
+        target_url = """jdbc:sqlserver://{DB_HOST}:{DB_PORT};DatabaseName={DB_NAME};username={DB_USER};password={DB_PASSWORD}""".format(**db_conn)
+        properties = {
+            "driver": sqlserver_config.SQLSERVER_DRIVER
+        }
+        df.write.jdbc(url=target_url, table=target_table, mode=mode, properties=properties)
+    
+    @get_cost_time_log(level='info')
+    def hive_write_oracle(self, query, target_table, mode='append'):
+        """
+        未测试
+        query 基于spark SQL获取临时表，简单的比如说查询某个表某天或者全部数据，或者复杂点的，多个表进行关联得到的临时表
+        例如：select * from ods.ods_sale where sale_date='2019-01-01' 或者 select * from ods.ods_sale
+        target_table 要插入的带schema的表名
+        mode 写到oracle中表的方式，默认是追加
+        """
+        df = self.spark.sql(query)
+        # print(df.show())
+        db_conn = oracle_config.ORACLE_CONN
+        target_url = """jdbc:oracle:thin:@//{DB_HOST}:{DB_PORT}/{DB_NAME}""".format(db_conn['DB_HOST'],db_conn['DB_PORT'], db_conn['DB_NAME'])
+        properties = {
+            "user": db_conn['DB_USER'],
+            "password": db_conn['DB_PASSWORD'],
+            "driver": oracle_config.ORACLE_DRIVER
+        }
+        df.write.jdbc(url=target_url, table=target_table, mode=mode, properties=properties)
+
+    @get_cost_time_log(level='info')
+    def hive_write_hana(self, query, target_table, mode='append'):
+        """
+        未测试
+        query 基于spark SQL获取临时表，简单的比如说查询某个表某天或者全部数据，或者复杂点的，多个表进行关联得到的临时表
+        例如：select * from ods.ods_sale where sale_date='2019-01-01' 或者 select * from ods.ods_sale
+        target_table 要插入的带schema的表名
+        mode 写到hana中表的方式，默认是追加
+        """
+        df = self.spark.sql(query)
+        # print(df.show())
+        db_conn = hana_config.HANA_CONN
+        target_url = "jdbc:sap:{DB_HOST}:{DB_PORT}/{DB_NAME}".format(DB_HOST=db_conn['DB_HOST'],DB_PORT=db_conn['DB_PORT'],DB_NAME=db_conn['DB_NAME'])
+        properties = {
+            "user": db_conn['DB_USER'],
+            "password": db_conn['DB_PASSWORD'],
+            "driver": hana_config.HANA_DRIVER
+        }
+        df.write.jdbc(url=target_url, table=target_table, mode=mode, properties=properties)
+
+    @get_cost_time_log(level='info')
+    def mysql_write_hive(self, query, target_table, mode='append'):
+        """
+        未测试
+        query 基于spark SQL获取临时表，简单的比如说查询某个表某天或者全部数据，或者复杂点的，多个表进行关联得到的临时表
+        例如：select * from ods.ods_sale where sale_date='2019-01-01' 或者 select * from ods.ods_sale
+        target_table 要插入的带schema的表名
+        mode 写到mysql中表的方式，默认是追加
+        """
+        df = self.spark.sql(query)
+        # print(df.show())
+        db_conn =  mysql_config.MYSQL_CONN
+        target_url = "jdbc:mysql://{DB_HOST}:{DB_PORT}".format(db_conn['DB_HOST'],db_conn['DB_PORT'])
+        properties = {
+            "user": db_conn['DB_USER'],
+            "password": db_conn['DB_PASSWORD'],
+            "driver": mysql_config.MYSQL_DRIVER
+        }
+        df.write.jdbc(url=target_url, table=target_table, mode=mode, properties=properties)
+    
 if __name__ =="__main__":
+    # obj = other_2_hive()
+    # obj.pg_write_hive('ds', 'ds')
+    dir_name = r"""C:\Users\xhw\Desktop\temp"""
+    obj = csv_or_excel_2_pg(dir_name, 'tiku.test')
+    # obj = csv_or_excel_2_pg(dir_name, target_table='tiku.test')
+    # obj = other_and_hive()
+    # obj.sqlserver_write_hive('dbo.RMSEIB', 'dashk')
     # obj = spark_etl_2_pg()
     # spark_conf = SparkConf()
     # spark_conf.set('driver-memory', '3g')
     # spark_conf.set('executor-memory', '8g')
     # spark_conf.set("spark.sql.shuffle.partitions", '1')
-    conn = {'DB_HOST':'192.168.16.236', 'DB_NAME':'tiku', 'DB_PORT':'5432', 'DB_USER':'tiku', 'DB_PASSWORD':'gv7ULMNLGVuBIUn0'}
-    # spark = SparkSession.builder.appName("Pyspark-excel").master('local[*]').config(conf=spark_conf)\
-    #     .config("spark.driver.extraClassPath", dirname+"\postgresql-42.1.1.jar").getOrCreate()
-    db_url = "jdbc:postgresql://{DB_HOST}:{DB_PORT}/{DB_NAME}?user={DB_USER}&password={DB_PASSWORD}".format(**conn)
-    print("获取到数据连接信息如下所示:\n"+db_url)
-    pg_driver = 'org.postgresql.Driver'
-    dir_name = r"""C:\Users\xhw\Desktop\temp"""
-    obj = spark_etl_2_pg(dir_name=dir_name, target_table='tiku.test', driver=pg_driver,db_url=db_url)
+    # conn = {'DB_HOST':'192.168.16.236', 'DB_NAME':'tiku', 'DB_PORT':'5432', 'DB_USER':'tiku', 'DB_PASSWORD':'gv7ULMNLGVuBIUn0'}
+    # # spark = SparkSession.builder.appName("Pyspark-excel").master('local[*]').config(conf=spark_conf)\
+    # #     .config("spark.driver.extraClassPath", dirname+"\postgresql-42.1.1.jar").getOrCreate()
+    # db_url = "jdbc:postgresql://{DB_HOST}:{DB_PORT}/{DB_NAME}?user={DB_USER}&password={DB_PASSWORD}".format(**conn)
+    # print("获取到数据连接信息如下所示:\n"+db_url)
+    # pg_driver = 'org.postgresql.Driver'
+    # dir_name = r"""C:\Users\xhw\Desktop\temp"""
+    # obj = csv_or_excel_2_pg(dir_name=dir_name, target_table='tiku.test', driver=pg_driver,db_url=db_url)
     # obj.excel_2_csv()
     # file_name = r"""D:\gongsi_project\菲儿雪\warehouse\linezone_fresh_wh_1\Hadoop\choice.xls"""
     # excel_file = pd.read_excel(file_name, sheet_name=None, header=0, dtype='str')
