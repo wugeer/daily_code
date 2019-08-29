@@ -63,8 +63,8 @@ class excel_config(object):
     skip_sheet 列表形式，元素为sheet页的名称
     """
     START_ROW=0
-    START_COLUMN=1
-    TIME_COLUMN=[1]
+    START_COLUMN=0
+    TIME_COLUMN=[]
     SKIP_SHEET = []
 
 class csv_config(object):
@@ -73,6 +73,7 @@ class csv_config(object):
     """
     HEADER=True
     INFERSCHEMA=False
+    DELIMITER=','
 
 def get_cost_time_log(level):
     """
