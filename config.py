@@ -63,8 +63,8 @@ class excel_config(object):
     skip_sheet 列表形式，元素为sheet页的名称
     """
     START_ROW=0
-    START_COLUMN=0
-    TIME_COLUMN=[]
+    START_COLUMN=1
+    TIME_COLUMN=[1]
     SKIP_SHEET = []
 
 class csv_config(object):

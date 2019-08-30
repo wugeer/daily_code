@@ -19,39 +19,38 @@ xlrd.Book.encoding = "utf-8"
 # dirname, filename = os.path.split(os.path.abspath(sys.argv[0]))
 # PG_DRIVER = 'org.postgresql.Driver'
 
-import pandas as pd
-import numpy as np
-
 class file_process(object):
     """
     将Excel中的每一个sheet转为csv文件，并将csv文件弄到专门的文件夹下
     """
-    def __init__(self, dir_name):
+    def __init__(self, ):
         """
         遍历该文件夹，考虑文件夹下子文件夹
         入参:要导入数据所在的文件夹
         """
-        self.csv_dir = os.path.join(dir_name, 'csv')
-        # self.dir_name = dir_name
-        # 如果不存在csv目录则创建
-        # print(1000000000000)
-        print(self.csv_dir)
-        os.makedirs(self.csv_dir, exist_ok=True)
-        self.my_run(dir_name)
+        pass
+        
     @get_cost_time_log(level='info')
     def my_run(self, dir_name):
         """
         遍历文件夹下所有文件，如果是Excel则转为csv，如果是csv直接移动到指定的文件夹
         """
+        csv_dir = os.path.join(dir_name, 'csv')
+        # self.dir_name = dir_name
+        # 如果不存在csv目录则创建
+        # print(1000000000000)
+        # print(self.csv_dir)
+        os.makedirs(csv_dir, exist_ok=True)
+        # self.my_run(dir_name)
         for entry in os.scandir(dir_name):
             if entry.is_dir() and entry.name!='csv':
                 self.my_run(os.path.join(dir_name, entry.name))
             if entry.name.endswith('.xlsx') or entry.name.endswith('.xls'):
-                self.excel_2_csv(file_name=os.path.join(dir_name, entry.name))
+                self.excel_2_csv(file_name=os.path.join(dir_name, entry.name),csv_dir=csv_dir)
             elif entry.name.endswith('.csv'):
                 # 移动CSV文件到指定目录
-                shutil.move(os.path.join(dir_name, entry.name), os.path.join(self.csv_dir, entry.name))
-    def excel_2_csv(self, file_name, start_row=excel_config.START_ROW, start_column=excel_config.START_COLUMN, time_col=excel_config.TIME_COLUMN, skip_sheet=excel_config.SKIP_SHEET):
+                shutil.move(os.path.join(dir_name, entry.name), os.path.join(csv_dir, entry.name))
+    def excel_2_csv(self, file_name, csv_dir, start_row=excel_config.START_ROW, start_column=excel_config.START_COLUMN, time_col=excel_config.TIME_COLUMN, skip_sheet=excel_config.SKIP_SHEET):
         """
         能解决Excel中时间类型
         传入参数：
@@ -72,7 +71,7 @@ class file_process(object):
                 continue
             # print(worksheet_name)
             worksheet = workbook.sheet_by_name(worksheet_name)
-            with open(os.path.join(self.csv_dir,os.path.splitext(file_name)[0]+'_'+worksheet_name+'.csv'), 'w', encoding='utf-8' ,newline='') as csv_file:
+            with open(os.path.join(csv_dir,os.path.splitext(file_name)[0]+'_'+worksheet_name+'.csv'), 'w', encoding='utf-8' ,newline='') as csv_file:
                 csv_writer = csv.writer(csv_file, delimiter=csv_config.DELIMITER)
                 # 遍历sheet页中每一个元素，从指定行列开始，并对时间列就行处理
                 for row in range(start_row, worksheet.nrows):
@@ -86,30 +85,25 @@ class file_process(object):
                             row_container.append(str(re.sub(r'\s+','', str(entry))))
                         else:
                             # 处理时间类型的列
+                            # print(entry)
                             row_container.append(datetime.datetime(*xlrd.xldate_as_tuple(entry, workbook.datemode)))
                     if row_container:
                         # 跳过空行
                         csv_writer.writerow(row_container)
 
-
-class csv_or_excel_2_pg(file_process):
+class csv_2_pg(object):
     """ 
     遍历工程下的所有文件，不含文件夹，将Excel文件转为CSV，并将CSV文件导入hive中
     导入数据库中的同一个表
     """
-    def __init__(self, dir_name, target_table):
-        super(csv_or_excel_2_pg, self).__init__(dir_name)
-        # super().run(dir_name)
+    def __init__(self, ):
         self.spark = SparkInit().get_spark()
-        # self.dir_name = dir_name
-        self.target_table = target_table
-        self.run()
 
     @get_cost_time_log(level='info')
-    def run(self,):
-        for file_name in os.scandir(self.csv_dir):
+    def run(self, dir_name, target_table):
+        for file_name in os.scandir(dir_name):
             # 对这个文件夹下所有的CSV导入库中
-            self.csv_2_pg(file_name=os.path.join(self.csv_dir, file_name.name),target_table=self.target_table)
+            self.csv_2_pg(file_name=os.path.join(dir_name, file_name.name),target_table=target_table)
 
     @get_cost_time_log(level='info')
     def csv_2_pg(self, file_name, target_table, mode='append', header=csv_config.HEADER, inferSchema=csv_config.INFERSCHEMA):
@@ -126,22 +120,57 @@ class csv_or_excel_2_pg(file_process):
         # print(target_table)
         df.write.jdbc(mode=mode, url=db_url, table=target_table, properties={"driver": pg_config.PG_DRIVER})
 
-class csv_or_excel_2_hive(file_process):
+class excel_2_pg(file_process, csv_2_pg):
     """ 
     遍历工程下的所有文件，不含文件夹，将Excel文件转为CSV，并将CSV文件导入hive中
     导入数据库中的同一个表
     """
     def __init__(self, dir_name, target_table):
-        super(csv_or_excel_2_hive, self).__init__(dir_name)
-        super().run(dir_name)
+        super(excel_2_pg, self).__init__()
+        super().my_run(dir_name)
+        self.spark = SparkInit().get_spark()
+        # self.dir_name = dir_name
+        # self.target_table = target_table
+        super(file_process,self).run(dir_name=os.path.join(dir_name, 'csv'), target_table=target_table)
+        # self.run(dir_name=os.path.join(dir_name, 'csv'))
+
+    # @get_cost_time_log(level='info')
+    # def run(self, dir_name):
+    #     for file_name in os.scandir(dir_name):
+    #         # 对这个文件夹下所有的CSV导入库中
+    #         self.csv_2_pg(file_name=os.path.join(dir_name, file_name.name),target_table=self.target_table)
+
+    # @get_cost_time_log(level='info')
+    # def csv_2_pg(self, file_name, target_table, mode='append', header=csv_config.HEADER, inferSchema=csv_config.INFERSCHEMA):
+    #     """
+    #     默认是有标题头的,csv导入pg
+    #     """
+    #     # df = self.spark.read.csv(file_name, header=header, inferSchema=inferSchema,delimiter='\t')
+    #     df = self.spark.read.format("csv").option("header", header) \
+    #                                 .option("inferSchema", inferSchema) \
+    #                                 .option("delimiter", csv_config.DELIMITER) \
+    #                                 .load(file_name)
+    #     # print(df.show())
+    #     db_url = pg_config.get_pg_conn()
+    #     # print(target_table)
+    #     df.write.jdbc(mode=mode, url=db_url, table=target_table, properties={"driver": pg_config.PG_DRIVER})
+
+class excel_2_hive(file_process):
+    """ 
+    遍历工程下的所有文件，不含文件夹，将Excel文件转为CSV，并将CSV文件导入hive中
+    导入数据库中的同一个表
+    """
+    def __init__(self, dir_name, target_table):
+        super(excel_2_hive, self).__init__()
+        super().my_run(dir_name)
         self.spark = SparkInit().get_spark()
         # self.dir_name = dir_name
         self.target_table = target_table
-        self.run()
-    def run(self,):
-        for file_name in os.scandir(self.csv_dir):
+        self.run(dir_name=os.path.join(dir_name, 'csv'))
+    def run(self, dir_name):
+        for file_name in os.scandir(dir_name):
             # 对这个文件夹下所有的CSV导入库中
-            self.csv_2_hive(file_name=os.path.join(self.csv_dir, file_name.name), target_table=self.target_table)
+            self.csv_2_hive(file_name=os.path.join(dir_name, file_name.name), target_table=self.target_table)
 
     def csv_2_hive(self, file_name, target_table, mode='append', header=csv_config.HEADER, inferSchema=csv_config.INFERSCHEMA):
         """
@@ -154,6 +183,33 @@ class csv_or_excel_2_hive(file_process):
                                     .load(file_name)
         df.write.saveAsTable(target_table, mode = mode)
 
+class csv_2_hive(object):
+    """ 
+    遍历工程下的所有文件，不含文件夹，将Excel文件转为CSV，并将CSV文件导入hive中
+    导入数据库中的同一个表
+    """
+    def __init__(self, dir_name, target_table):
+        # super(excel_2_hive, self).__init__()
+        # super().my_run(dir_name)
+        self.spark = SparkInit().get_spark()
+        # self.dir_name = dir_name
+        self.target_table = target_table
+        self.run(dir_name=dir_name)
+    def run(self, dir_name):
+        for file_name in os.scandir(dir_name):
+            # 对这个文件夹下所有的CSV导入库中
+            self.csv_2_hive(file_name=os.path.join(dir_name, file_name.name), target_table=self.target_table)
+
+    def csv_2_hive(self, file_name, target_table, mode='append', header=csv_config.HEADER, inferSchema=csv_config.INFERSCHEMA):
+        """
+        默认是有标题头的,csv中应该是有字段名，如果没有则应该替换
+        """
+        # df = self.spark.read.csv(file_name, header=header, inferSchema=inferSchema)
+        df = self.spark.read.format("csv").option("header", header) \
+                                    .option("inferSchema", inferSchema) \
+                                    .option("delimiter", csv_config.DELIMITER) \
+                                    .load(file_name)
+        df.write.saveAsTable(target_table, mode = mode)
 
 class other_2_hive(object):
     def __init__(self, ):
@@ -349,8 +405,9 @@ class hive_2_other(object):
         df.write.jdbc(url=target_url, table=target_table, mode=mode, properties=properties)
     
 if __name__ =="__main__":
-    dir_name = r"""C:\Users\xhw\Desktop"""
-    obj = csv_or_excel_2_pg(dir_name, 'tiku.xhw')
+    dir_name = r"""C:\Users\xhw\Desktop\temp\csv"""
+    obj = csv_2_pg()
+    obj.run(dir_name=dir_name, target_table='tiku.xhw')
     # obj.csv_2_pg(file_name,'tiku.xhw')
     # obj.pg_write_hive('ds', 'ds')
     # dir_name = r"""C:\Users\xhw\Desktop\temp"""
