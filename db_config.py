@@ -1,57 +1,100 @@
 """
 配置类：含pg，sql server, oracle等驱动和连接信息
 """
-import time 
+import time
 import datetime
-import os
-import sys
 from pyspark.sql import SparkSession
 from pyspark import SparkConf
+
 
 class pg_config(object):
     """
     pg连接设置，主要是驱动类,url串
     """
-    PG_DRIVER = 'org.postgresql.Driver'
-    PG_CONN = {'DB_HOST':'192.168.16.236', 'DB_NAME':'tiku', 'DB_PORT':'5432', 'DB_USER':'tiku', 'DB_PASSWORD':'gv7ULMNLGVuBIUn0'}
-    def __init__(self,):
+    DB_DRIVER = 'org.postgresql.Driver'
+    PG_CONN = {
+        'DB_HOST': '192.168.16.236',
+        'DB_NAME': 'tiku',
+        'DB_PORT': '5432'
+    }
+    DB_USER = 'tiku',
+    DB_PASSWORD = 'gv7ULMNLGVuBIUn0'
+    DB_URL = "jdbc:postgresql://{DB_HOST}:{DB_PORT}/{DB_NAME}".format(**PG_CONN)
+
+    def __init__(self, ):
         pass
+
     @staticmethod
     def get_pg_conn():
-        return "jdbc:postgresql://{DB_HOST}:{DB_PORT}/{DB_NAME}?user={DB_USER}&password={DB_PASSWORD}".format(**pg_config.PG_CONN)
+        return "jdbc:postgresql://{DB_HOST}:{DB_PORT}/{DB_NAME}?user={DB_USER}&password={DB_PASSWORD}".format(
+            **pg_config.PG_CONN)
+
 
 class sqlserver_config(object):
     """
     SQLserver连接设置，主要是驱动类和url串
     """
-    SQLSERVER_DRIVER = "com.microsoft.sqlserver.jdbc.SQLServerDriver"
-    SQLSERVER_CONN = {'DB_HOST':'218.65.45.87', 'DB_NAME':'FEX', 'DB_PORT':'5320', 'DB_USER':'sa', 'DB_PASSWORD':'lanzhong2019'}
-    def __init__(self,):
+    DB_DRIVER = "com.microsoft.sqlserver.jdbc.SQLServerDriver"
+    SQLSERVER_CONN = {
+        'DB_HOST': '218.65.45.87',
+        'DB_NAME': 'FEX',
+        'DB_PORT': '5320',
+    }
+    DB_USER = 'sa',
+    DB_PASSWORD = 'lanzhong2019'
+    DB_URL = "jdbc:sqlserver://{DB_HOST}:{DB_PORT};DatabaseName={DB_NAME}".format(**SQLSERVER_CONN)
+
+    def __init__(self, ):
         pass
+
     @staticmethod
     def get_sqlserver_conn():
-        return """jdbc:sqlserver://{DB_HOST}:{DB_PORT};DatabaseName={DB_NAME};username={DB_USER};password={DB_PASSWORD}""".format(**sqlserver_config.SQLSERVER_CONN)
+        return """jdbc:sqlserver://{DB_HOST}:{DB_PORT};DatabaseName={DB_NAME};username={DB_USER};password={DB_PASSWORD}""".format(
+            **sqlserver_config.SQLSERVER_CONN)
+
 
 class oracle_config(object):
     """
     oracle 连接设置，主要是驱动类和连接参数，由于没找到含用户名和密码的整个url串，所以就不设置函数直接返回完整版的url串，而是用连接参数分别指定相应的参数
     """
-    ORACLE_DRIVER = "oracle.jdbc.driver.OracleDriver"
-    ORACLE_CONN = {'DB_HOST':'218.65.45.87', 'DB_NAME':'FEX', 'DB_PORT':'5320', 'DB_USER':'sa', 'DB_PASSWORD':'lanzhong2019'}
+    DB_DRIVER = "oracle.jdbc.driver.OracleDriver"
+    ORACLE_CONN = {
+        'DB_HOST': '要连接的oracle库ip',
+        'DB_NAME': '数据库名',
+        'DB_PORT': '端口',
+    }
+    DB_USER = 'sa'
+    DB_PASSWORD = 'lanzhong2019'
+    DB_URL = "jdbc:oracle:thin:@//{DB_HOST}:{DB_PORT}/{DB_NAME}".format(**ORACLE_CONN)
+
 
 class hana_config(object):
     """
     hana 连接设置，主要是驱动类和连接参数，由于没找到含用户名和密码的整个url串，所以就不设置函数直接返回完整版的url串，而是用连接参数分别指定相应的参数
     """
-    HANA_DRIVER = "com.sap.db.jdbc.Driver"   
-    HANA_CONN = {'DB_HOST':'要连接的hana库ip', 'DB_NAME':'数据库名', 'DB_PORT':'hana端口', 'DB_USER':'用户名', 'DB_PASSWORD':'密码'}
+    DB_DRIVER = "com.sap.db.jdbc.Driver"
+    HANA_CONN = {
+        'DB_HOST': '要连接的hana库ip',
+        'DB_NAME': '数据库名',
+        'DB_PORT': 'hana端口',
+    }
+    DB_USER = '用户名'
+    DB_PASSWORD = '密码'
+    DB_URL = "jdbc:sap:{DB_HOST}:{DB_PORT}/{DB_NAME}".format(**HANA_CONN)
+
 
 class mysql_config(object):
     """
     mysql 连接设置，主要是驱动类和连接参数，由于没找到含用户名和密码的整个url串，所以就不设置函数直接返回完整版的url串，而是用连接参数分别指定相应的参数
     """
-    MYSQL_DRIVER = "com.mysql.jdbc.Driver"
-    MYSQL_CONN = {'DB_HOST':'要连接的MySQL库ip', 'DB_NAME':'此处可忽略', 'DB_PORT':'MySQL端口', 'DB_USER':'用户名', 'DB_PASSWORD':'密码'}
+    DB_DRIVER = "com.mysql.jdbc.Driver"
+    MYSQL_CONN = {
+        'DB_HOST': '要连接的MySQL库ip',
+        'DB_PORT': 'MySQL端口',
+    }
+    DB_USER = '用户名'
+    DB_PASSWORD = '密码'
+    DB_URL = "jdbc:mysql://{DB_HOST}:{DB_PORT}".format(**MYSQL_CONN)
 
 
 class excel_config(object):
@@ -62,40 +105,45 @@ class excel_config(object):
     time_col 列表形式，元素为行号，例如：[1,2]代表第2,3列是时间类型需要特殊处理
     skip_sheet 列表形式，元素为sheet页的名称
     """
-    START_ROW=0
-    START_COLUMN=1
-    TIME_COLUMN=[1]
+    START_ROW = 0
+    START_COLUMN = 0
+    TIME_COLUMN = []
     SKIP_SHEET = []
+
 
 class csv_config(object):
     """
     header=True, inferSchema=False
     """
-    HEADER=True
-    INFERSCHEMA=False
-    DELIMITER=','
+    HEADER = True
+    INFERSCHEMA = False
+    DELIMITER = ','
+
 
 def get_cost_time_log(level):
     """
     打印函数执行时间的装饰器
     """
     def decorator(func):
-	    def wrapper(*args, **kwargs):
-		    start = time.time()
-		    print('[{log_level}]: function {func_name} start at  {local_time}'.format(log_level=level,local_time=datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),\
-                func_name=func.__name__))
-		    func(*args, **kwargs)
-		    local_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-		    print('[{log_level}]: function {func_name} end at  {local_time} cost {cost_time} seconds!'.format(log_level=level,local_time=local_time,\
-                func_name=func.__name__, cost_time=time.time()-start))
-	    return wrapper
+        def wrapper(*args, **kwargs):
+            start = time.time()
+            print('[{log_level}]: function {func_name} start at  {local_time}'.format(log_level=level,local_time=datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),\
+                      func_name=func.__name__))
+            func(*args, **kwargs)
+            local_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            print('[{log_level}]: function {func_name} end at  {local_time} cost {cost_time} seconds!'.format(log_level=level,local_time=local_time,\
+                      func_name=func.__name__, cost_time=time.time()-start))
+
+        return wrapper
+
     return decorator
+
 
 class SparkInit(object):
     """
     spark配置和spark实例
     """
-    def __init__(self,):
+    def __init__(self, ):
         # app的名称
         app_name = "PySpark-etl"
         # config 配置
@@ -116,8 +164,5 @@ class SparkInit(object):
             .enableHiveSupport() \
             .getOrCreate()
 
-    def get_spark(self,):
+    def get_spark(self, ):
         return self.spark
-
-
-    
